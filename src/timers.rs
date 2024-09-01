@@ -41,6 +41,7 @@ pub fn register_timer(deadline: usize, handler: TimerEventFn) {
 }
 
 pub fn check_events() {
+    // info!("1");
     loop {
         let now = TimeValue::from_nanos(riscv::register::time::read() as u64 * NANOS_PER_TICK);
         let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
