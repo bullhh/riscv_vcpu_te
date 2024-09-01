@@ -8,12 +8,12 @@
 #[macro_use]
 extern crate log;
 
-pub mod csrs;
 mod detect;
 mod percpu;
 mod regs;
 pub mod sbi;
 mod vcpu;
+mod consts;
 
 pub use self::percpu::RISCVPerCpu;
 pub use self::vcpu::RISCVVCpu;

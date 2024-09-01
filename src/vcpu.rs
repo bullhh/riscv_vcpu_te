@@ -2,7 +2,7 @@ use core::arch::global_asm;
 use core::mem::size_of;
 
 use memoffset::offset_of;
-use riscv::register::{htinst, htval, scause, sstatus, stval};
+use riscv::register::{htinst, htval, scause, sstatus, stval, hstatus, hvip, sie};
 use sbi_rt::{pmu_counter_get_info, pmu_counter_stop};
 use tock_registers::LocalRegisterCopy;
 
@@ -10,93 +10,11 @@ use axaddrspace::{GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axerrno::AxResult;
 use axvcpu::AxVCpuExitReason;
 
-use super::csrs::defs::hstatus;
-use super::csrs::{traps, RiscvCsrTrait, CSR};
+use riscv::addr::BitField;
 use super::sbi::{BaseFunction, PmuFunction, RemoteFenceFunction, SbiMessage};
 
-use super::regs::{GeneralPurposeRegisters, GprIndex};
+use super::regs::*;
 
-/// Hypervisor GPR and CSR state which must be saved/restored when entering/exiting virtualization.
-#[derive(Default)]
-#[repr(C)]
-struct HypervisorCpuState {
-    gprs: GeneralPurposeRegisters,
-    sstatus: usize,
-    hstatus: usize,
-    scounteren: usize,
-    stvec: usize,
-    sscratch: usize,
-}
-
-/// Guest GPR and CSR state which must be saved/restored when exiting/entering virtualization.
-#[derive(Default)]
-#[repr(C)]
-pub struct GuestCpuState {
-    pub gprs: GeneralPurposeRegisters,
-    pub sstatus: usize,
-    pub hstatus: usize,
-    pub scounteren: usize,
-    pub sepc: usize,
-}
-
-/// The CSRs that are only in effect when virtualization is enabled (V=1) and must be saved and
-/// restored whenever we switch between VMs.
-#[derive(Default)]
-#[repr(C)]
-pub struct GuestVsCsrs {
-    htimedelta: usize,
-    vsstatus: usize,
-    vsie: usize,
-    vstvec: usize,
-    vsscratch: usize,
-    vsepc: usize,
-    vscause: usize,
-    vstval: usize,
-    vsatp: usize,
-    vstimecmp: usize,
-}
-
-/// Virtualized HS-level CSRs that are used to emulate (part of) the hypervisor extension for the
-/// guest.
-#[derive(Default)]
-#[repr(C)]
-pub struct GuestVirtualHsCsrs {
-    hie: usize,
-    hgeie: usize,
-    hgatp: usize,
-}
-
-/// CSRs written on an exit from virtualization that are used by the hypervisor to determine the cause
-/// of the trap.
-#[derive(Default, Clone)]
-#[repr(C)]
-pub struct VmCpuTrapState {
-    pub scause: usize,
-    pub stval: usize,
-    pub htval: usize,
-    pub htinst: usize,
-}
-
-/// (v)CPU register state that must be saved or restored when entering/exiting a VM or switching
-/// between VMs.
-#[derive(Default)]
-#[repr(C)]
-pub struct VmCpuRegisters {
-    // CPU state that's shared between our's and the guest's execution environment. Saved/restored
-    // when entering/exiting a VM.
-    hyp_regs: HypervisorCpuState,
-    pub guest_regs: GuestCpuState,
-
-    // CPU state that only applies when V=1, e.g. the VS-level CSRs. Saved/restored on activation of
-    // the vCPU.
-    vs_csrs: GuestVsCsrs,
-
-    // Virtualized HS-level CPU state.
-    virtual_hs_csrs: GuestVirtualHsCsrs,
-
-    // Read on VM exit.
-    pub trap_csrs: VmCpuTrapState,
-}
 
 #[allow(dead_code)]
 const fn hyp_gpr_offset(index: GprIndex) -> usize {
@@ -217,14 +135,14 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
     fn new(_config: Self::CreateConfig) -> AxResult<Self> {
         let mut regs = VmCpuRegisters::default();
         // Set hstatus
-        let mut hstatus = LocalRegisterCopy::<usize, hstatus::Register>::new(
-            riscv::register::hstatus::read().bits(),
-        );
-        hstatus.modify(hstatus::spv::Supervisor);
+        let mut hstatus = hstatus::read();
+        hstatus.set_spv(true);
         // Set SPVP bit in order to accessing VS-mode memory from HS-mode.
-        hstatus.modify(hstatus::spvp::Supervisor);
-        CSR.hstatus.write_value(hstatus.get());
-        regs.guest_regs.hstatus = hstatus.get();
+        hstatus.set_spvp(true);
+        unsafe {
+            hstatus.write();
+        }
+        regs.guest_regs.hstatus = hstatus.bits();
 
         // Set sstatus
         let mut sstatus = sstatus::read();
@@ -232,6 +150,7 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
         regs.guest_regs.sstatus = sstatus.bits();
 
         regs.guest_regs.gprs.set_reg(GprIndex::A0, 0);
+        // TODO:from _config
         regs.guest_regs.gprs.set_reg(GprIndex::A1, 0x9000_0000);
 
         Ok(Self { regs })
@@ -328,12 +247,13 @@ impl RISCVVCpu {
                         }
                         SbiMessage::SetTimer(timer) => {
                             sbi_rt::set_timer(timer as u64);
-                            // Clear guest timer interrupt
-                            CSR.hvip
-                                .read_and_clear_bits(traps::interrupt::VIRTUAL_SUPERVISOR_TIMER);
-                            //  Enable host timer interrupt
-                            CSR.sie
-                                .read_and_set_bits(traps::interrupt::SUPERVISOR_TIMER);
+                            unsafe {
+                                // Clear guest timer interrupt
+                                hvip::clear_vstip();
+                                //  Enable host timer interrupt
+                                sie::set_stimer();
+                            }
+                            
                         }
                         SbiMessage::Reset(_) => {
                             sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::SystemFailure);
@@ -353,14 +273,15 @@ impl RISCVVCpu {
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                // debug!("timer irq emulation");
-                // Enable guest timer interrupt
-                CSR.hvip
-                    .read_and_set_bits(traps::interrupt::VIRTUAL_SUPERVISOR_TIMER);
-                // Clear host timer interrupt
-                CSR.sie
-                    .read_and_clear_bits(traps::interrupt::SUPERVISOR_TIMER);
-                Ok(AxVCpuExitReason::Nothing)
+                unsafe {
+                    // debug!("timer irq emulation");
+                    // Enable guest timer interrupt
+                    hvip::set_vstip();
+                    // Clear host timer interrupt
+                    sie::clear_stimer();
+                    Ok(AxVCpuExitReason::Nothing)
+                }
+                
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
