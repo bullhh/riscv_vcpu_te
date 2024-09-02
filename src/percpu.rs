@@ -7,7 +7,7 @@ use crate::consts::traps;
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
 use crate::has_hardware_support;
 use crate::timers;
-use riscv::register::{hedeleg, hideleg, hvip, sie, stvec};
+use riscv::register::{hedeleg, hideleg, hvip, sie, stvec, sstatus};
 
 extern "C" {
     fn trap_base();
@@ -36,7 +36,7 @@ impl AxArchPerCpu for RISCVPerCpu {
         }
 
         timers::init();
-
+        sbi_rt::set_timer(0);
         Ok(Self {})
     }
 
@@ -95,4 +95,6 @@ unsafe fn setup_csrs() {
     sie::set_stimer();
 
     stvec::write(trap_base as usize, stvec::TrapMode::Direct);
+
+    sstatus::set_sie();
 }

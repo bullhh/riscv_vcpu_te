@@ -1,5 +1,5 @@
-// use crate::consts::traps::irq::TIMER_IRQ_NUM;
-// use crate::irq;
+use crate::consts::traps::irq::TIMER_IRQ_NUM;
+use crate::irq;
 use crate::regs::*;
 use crate::sbi::{BaseFunction, PmuFunction, RemoteFenceFunction, SbiMessage};
 use crate::timers::register_timer;
@@ -129,14 +129,8 @@ impl RISCVVCpu {
                 scause & !(1 << (size_of::<usize>() * 8 - 1)),
             )) {
                 Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                    unsafe {
-                        // debug!("timer irq emulation");
-                        // Enable guest timer interrupt
-                        hvip::set_vstip();
-                        // Clear host timer interrupt
-                        sie::clear_stimer();
-                    }
-                    // irq::handler_irq(TIMER_IRQ_NUM);
+                    // info!("timer irq emulation");
+                    irq::handler_irq(TIMER_IRQ_NUM);
                     Ok(AxVCpuExitReason::Nothing)
                 }
                 Trap::Interrupt(Interrupt::SupervisorExternal) => {
@@ -192,17 +186,10 @@ impl RISCVVCpu {
                     sbi_rt::legacy::console_putchar(c);
                 }
                 SbiMessage::SetTimer(timer) => {
-                    sbi_rt::set_timer(timer as u64);
-                    unsafe {
-                        // Clear guest timer interrupt
-                        hvip::clear_vstip();
-                        //  Enable host timer interrupt
-                        sie::set_stimer();
-                    }
                     // Clear guest timer interrupt
-                    // unsafe {
-                    //     hvip::clear_vstip();
-                    // }
+                    unsafe {
+                        hvip::clear_vstip();
+                    }
 
                     register_timer(
                         timer * 100,
