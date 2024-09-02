@@ -1,13 +1,11 @@
-use axerrno::{AxError, AxResult};
-
-use axvcpu::AxArchPerCpu;
-
-use super::irq;
 use crate::consts::traps;
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
 use crate::has_hardware_support;
+use crate::irq;
 use crate::timers;
-use riscv::register::{hedeleg, hideleg, hvip, sie, stvec, sstatus};
+use axerrno::{AxError, AxResult};
+use axvcpu::AxArchPerCpu;
+use riscv::register::{hedeleg, hideleg, hvip, sie, sstatus, stvec};
 
 extern "C" {
     fn trap_base();
@@ -95,6 +93,4 @@ unsafe fn setup_csrs() {
     sie::set_stimer();
 
     stvec::write(trap_base as usize, stvec::TrapMode::Direct);
-
-    sstatus::set_sie();
 }
