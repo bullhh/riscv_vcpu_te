@@ -9,7 +9,7 @@ use axerrno::AxResult;
 use axvcpu::AxVCpuExitReason;
 use core::mem::size_of;
 use riscv::addr::BitField;
-use riscv::register::{hstatus, hvip, scause, sie, sstatus};
+use riscv::register::{hstatus, hvip, scause, sstatus};
 use sbi_rt::{pmu_counter_get_info, pmu_counter_stop};
 
 extern "C" {

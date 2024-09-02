@@ -5,7 +5,7 @@ use crate::irq;
 use crate::timers;
 use axerrno::{AxError, AxResult};
 use axvcpu::AxArchPerCpu;
-use riscv::register::{hedeleg, hideleg, hvip, sie, sstatus, stvec};
+use riscv::register::{hedeleg, hideleg, hvip, sie, stvec};
 
 extern "C" {
     fn trap_base();
