@@ -2,11 +2,12 @@ use axerrno::{AxError, AxResult};
 
 use axvcpu::AxArchPerCpu;
 
-use crate::has_hardware_support;
-use crate::consts::traps;
-use crate::timers;
 use super::irq;
-use riscv::register::{hedeleg, hideleg, hvip, sie, stvec, sstatus};
+use crate::consts::traps;
+use crate::consts::traps::irq::TIMER_IRQ_NUM;
+use crate::has_hardware_support;
+use crate::timers;
+use riscv::register::{hedeleg, hideleg, hvip, sie, stvec};
 
 extern "C" {
     fn trap_base();
@@ -16,13 +17,12 @@ pub struct RISCVPerCpu {}
 
 impl AxArchPerCpu for RISCVPerCpu {
     fn new(cpu_id: usize) -> AxResult<Self> {
-
         unsafe {
             setup_csrs();
         }
 
         if cpu_id == 0 {
-            irq::register_handler(irq::TIMER_IRQ_NUM, || {
+            irq::register_handler(TIMER_IRQ_NUM, || {
                 unsafe {
                     sie::clear_stimer();
                 }

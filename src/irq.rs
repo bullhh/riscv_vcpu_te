@@ -1,5 +1,5 @@
 //! Interrupt management.
-
+use crate::consts::traps::irq::*;
 use handler_table::HandlerTable;
 use lazyinit::LazyInit;
 
@@ -7,27 +7,7 @@ use lazyinit::LazyInit;
 pub type IrqHandler = handler_table::Handler;
 
 static IRQ_HANDLER_TABLE: HandlerTable<MAX_IRQ_COUNT> = HandlerTable::new();
-
-/// `Interrupt` bit in `scause`
-pub(super) const INTC_IRQ_BASE: usize = 1 << (usize::BITS - 1);
-
-/// Supervisor software interrupt in `scause`
-#[allow(unused)]
-pub(super) const S_SOFT: usize = INTC_IRQ_BASE + 1;
-
-/// Supervisor timer interrupt in `scause`
-pub(super) const S_TIMER: usize = INTC_IRQ_BASE + 5;
-
-/// Supervisor external interrupt in `scause`
-pub(super) const S_EXT: usize = INTC_IRQ_BASE + 9;
-
 static TIMER_HANDLER: LazyInit<IrqHandler> = LazyInit::new();
-
-/// The maximum number of IRQs.
-pub const MAX_IRQ_COUNT: usize = 1024;
-
-/// The timer IRQ number (supervisor timer interrupt in `scause`).
-pub const TIMER_IRQ_NUM: usize = S_TIMER;
 
 /// Platform-independent IRQ dispatching.
 #[allow(dead_code)]

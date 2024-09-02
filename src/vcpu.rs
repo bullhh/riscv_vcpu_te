@@ -1,22 +1,16 @@
-use core::arch::global_asm;
-use core::mem::size_of;
-
-use memoffset::offset_of;
-use riscv::register::{htinst, htval, scause, sstatus, stval, hstatus, hvip, sie};
-use sbi_rt::{pmu_counter_get_info, pmu_counter_stop};
-use tock_registers::LocalRegisterCopy;
-
+// use crate::consts::traps::irq::TIMER_IRQ_NUM;
+// use crate::irq;
+use crate::regs::*;
+use crate::sbi::{BaseFunction, PmuFunction, RemoteFenceFunction, SbiMessage};
+use crate::timers::register_timer;
+use crate::timers::TimerEventFn;
 use axaddrspace::{GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axerrno::AxResult;
 use axvcpu::AxVCpuExitReason;
-use crate::irq;
-use crate::timers::register_timer;
-use crate::timers::TimerEventFn;
-
+use core::mem::size_of;
 use riscv::addr::BitField;
-use super::sbi::{BaseFunction, PmuFunction, RemoteFenceFunction, SbiMessage};
-
-use super::regs::*;
+use riscv::register::{hstatus, hvip, scause, sie, sstatus};
+use sbi_rt::{pmu_counter_get_info, pmu_counter_stop};
 
 extern "C" {
     fn _run_guest(state: *mut VmCpuRegisters);
@@ -128,46 +122,57 @@ impl RISCVVCpu {
 
 impl RISCVVCpu {
     fn vmexit_handler(&mut self) -> AxResult<AxVCpuExitReason> {
-        self.regs.trap_csrs.scause = scause::read().bits();
-        self.regs.trap_csrs.stval = stval::read();
-        self.regs.trap_csrs.htval = htval::read();
-        self.regs.trap_csrs.htinst = htinst::read();
-
-        let scause = scause::read();
+        let scause = self.regs.trap_csrs.scause;
         use scause::{Exception, Interrupt, Trap};
-        match scause.cause() {
-            Trap::Exception(Exception::VirtualSupervisorEnvCall) => {
-                self.handle_sbi_msg()
+        if scause.get_bit(size_of::<usize>() * 8 - 1) {
+            match Trap::Interrupt(Interrupt::from(
+                scause & !(1 << (size_of::<usize>() * 8 - 1)),
+            )) {
+                Trap::Interrupt(Interrupt::SupervisorTimer) => {
+                    unsafe {
+                        // debug!("timer irq emulation");
+                        // Enable guest timer interrupt
+                        hvip::set_vstip();
+                        // Clear host timer interrupt
+                        sie::clear_stimer();
+                    }
+                    // irq::handler_irq(TIMER_IRQ_NUM);
+                    Ok(AxVCpuExitReason::Nothing)
+                }
+                Trap::Interrupt(Interrupt::SupervisorExternal) => {
+                    Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
+                }
+                _ => {
+                    panic!(
+                        "Unhandled trap: {:?}, sepc: {:#x}, stval: {:#x}",
+                        Trap::Interrupt(Interrupt::from(scause)),
+                        self.regs.guest_regs.sepc,
+                        self.regs.trap_csrs.stval
+                    );
+                }
             }
-            Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                // unsafe {
-                //     // debug!("timer irq emulation");
-                //     // Enable guest timer interrupt
-                //     hvip::set_vstip();
-                //     // Clear host timer interrupt
-                //     sie::clear_stimer();
-                // }
-                irq::handler_irq(irq::TIMER_IRQ_NUM);
-                Ok(AxVCpuExitReason::Nothing)
-            }
-            Trap::Interrupt(Interrupt::SupervisorExternal) => {
-                Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
-            }
-            Trap::Exception(Exception::LoadGuestPageFault)
-            | Trap::Exception(Exception::StoreGuestPageFault) => {
-                let fault_addr = self.regs.trap_csrs.htval << 2 | self.regs.trap_csrs.stval & 0x3;
-                Ok(AxVCpuExitReason::NestedPageFault {
-                    addr: GuestPhysAddr::from(fault_addr),
-                    access_flags: MappingFlags::empty(),
-                })
-            }
-            _ => {
-                panic!(
-                    "Unhandled trap: {:?}, sepc: {:#x}, stval: {:#x}",
-                    scause.cause(),
-                    self.regs.guest_regs.sepc,
-                    self.regs.trap_csrs.stval
-                );
+        } else {
+            match Trap::Exception(Exception::from(
+                scause & !(1 << (size_of::<usize>() * 8 - 1)),
+            )) {
+                Trap::Exception(Exception::VirtualSupervisorEnvCall) => self.handle_sbi_msg(),
+                Trap::Exception(Exception::LoadGuestPageFault)
+                | Trap::Exception(Exception::StoreGuestPageFault) => {
+                    let fault_addr =
+                        self.regs.trap_csrs.htval << 2 | self.regs.trap_csrs.stval & 0x3;
+                    Ok(AxVCpuExitReason::NestedPageFault {
+                        addr: GuestPhysAddr::from(fault_addr),
+                        access_flags: MappingFlags::empty(),
+                    })
+                }
+                _ => {
+                    panic!(
+                        "Unhandled trap: {:?}, sepc: {:#x}, stval: {:#x}",
+                        Trap::Exception(Exception::from(scause)),
+                        self.regs.guest_regs.sepc,
+                        self.regs.trap_csrs.stval
+                    );
+                }
             }
         }
     }
@@ -187,17 +192,17 @@ impl RISCVVCpu {
                     sbi_rt::legacy::console_putchar(c);
                 }
                 SbiMessage::SetTimer(timer) => {
-                    // sbi_rt::set_timer(timer as u64);
-                    // unsafe {
-                    //     // Clear guest timer interrupt
-                    //     hvip::clear_vstip();
-                    //     //  Enable host timer interrupt
-                    //     sie::set_stimer();
-                    // }
-                    // Clear guest timer interrupt
+                    sbi_rt::set_timer(timer as u64);
                     unsafe {
+                        // Clear guest timer interrupt
                         hvip::clear_vstip();
+                        //  Enable host timer interrupt
+                        sie::set_stimer();
                     }
+                    // Clear guest timer interrupt
+                    // unsafe {
+                    //     hvip::clear_vstip();
+                    // }
 
                     register_timer(
                         timer * 100,

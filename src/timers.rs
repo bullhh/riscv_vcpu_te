@@ -1,15 +1,10 @@
 extern crate alloc;
 
+use crate::consts::timers::*;
 use alloc::boxed::Box;
 use kspin::SpinNoIrq;
 use lazyinit::LazyInit;
 use timer_list::{TimeValue, TimerEvent, TimerList};
-
-const TICKS_PER_SEC: u64 = 100;
-const NANOS_PER_SEC: u64 = 1_000_000_000;
-const PERIODIC_INTERVAL_NANOS: u64 = NANOS_PER_SEC / TICKS_PER_SEC;
-const TIMER_FREQUENCY: u64 = 10_000_000;
-const NANOS_PER_TICK: u64 = NANOS_PER_SEC / TIMER_FREQUENCY;
 
 // TODO:complete TimerEventFn: including guest owmer, ...
 pub struct TimerEventFn(Box<dyn FnOnce(TimeValue) + Send + 'static>);

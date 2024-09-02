@@ -1,3 +1,6 @@
+use crate::consts::stack::EXCEPTION_STACK_SIZE;
+use crate::irq::handler_irq;
+use crate::regs::*;
 use core::mem::size_of;
 use memoffset::offset_of;
 use memory_addr::VirtAddr;
@@ -5,14 +8,11 @@ use page_table_entry::MappingFlags;
 use riscv::register::scause::{self, Exception as E, Trap};
 use riscv::register::{hstatus, htinst, htval, stval};
 
-use super::irq::handler_irq;
-use super::regs::*;
-
 extern "C" {
     fn vmexit_riscv_handler(state: *mut VmCpuRegisters);
 }
 
-static mut EXCEPTION_STACK: [u8; 8192] = [0; 8192];
+static mut EXCEPTION_STACK: [u8; EXCEPTION_STACK_SIZE] = [0; EXCEPTION_STACK_SIZE];
 
 #[allow(dead_code)]
 const fn hyp_gpr_offset(index: GprIndex) -> usize {
@@ -111,7 +111,7 @@ core::arch::global_asm!(
     guest_scounteren = const guest_csr_offset!(scounteren),
     guest_sepc = const guest_csr_offset!(sepc),
     exception_stack = sym EXCEPTION_STACK,
-    exception_stack_size = const 4096,
+    exception_stack_size = const EXCEPTION_STACK_SIZE,
 );
 
 fn handle_breakpoint(sepc: &mut usize) {
