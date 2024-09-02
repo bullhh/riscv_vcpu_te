@@ -93,12 +93,12 @@ impl GeneralPurposeRegisters {
     }
 
     /// Sets the value of the given register.
-    pub fn set_reg(&mut self, reg_index: GprIndex, val: usize) {
-        if reg_index == GprIndex::Zero {
+    pub fn set_reg(&mut self, reg_index: usize, val: usize) {
+        if reg_index == 0 {
             return;
         }
 
-        self.0[reg_index as usize] = val;
+        self.0[reg_index] = val;
     }
 
     /// Returns the argument registers.
