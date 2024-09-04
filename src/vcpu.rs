@@ -278,6 +278,10 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
         // unimplemented!()
         Ok(())
     }
+
+    fn set_gpr(&mut self, _: usize, _: usize) {
+        todo!()
+    }
 }
 
 impl RISCVVCpu {
