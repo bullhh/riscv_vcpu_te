@@ -33,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      matrix:
+        targets: [riscv64gc-unknown-none-elf]
     permissions:
       contents: write
     env:
@@ -44,7 +46,7 @@ jobs:
     - name: Build docs
       continue-on-error: ${{ github.ref != env.default-branch && github.event_name != 'pull_request' }}
       run: |
-        cargo doc --no-deps --all-features
+        cargo doc --no-deps --all-features --target ${{ matrix.targets }}
         printf '<meta http-equiv="refresh" content="0;url=%s/index.html">' $(cargo tree | head -1 | cut -d' ' -f1) > target/doc/index.html
     - name: Deploy to Github Pages
       if: ${{ github.ref == env.default-branch }}

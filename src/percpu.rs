@@ -1,11 +1,12 @@
+use axerrno::{AxError, AxResult};
+use axvcpu::AxArchPerCpu;
+use riscv::register::{hedeleg, hideleg, hvip, sie, stvec};
+
 use crate::consts::traps;
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
 use crate::has_hardware_support;
 use crate::irq;
 use crate::timers;
-use axerrno::{AxError, AxResult};
-use axvcpu::AxArchPerCpu;
-use riscv::register::{hedeleg, hideleg, hvip, sie, stvec};
 
 extern "C" {
     fn trap_base();

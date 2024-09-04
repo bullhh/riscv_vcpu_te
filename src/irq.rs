@@ -1,7 +1,8 @@
 //! Interrupt management.
-use crate::consts::traps::irq::*;
 use handler_table::HandlerTable;
 use lazyinit::LazyInit;
+
+use crate::consts::traps::irq::*;
 
 /// The type if an IRQ handler.
 pub type IrqHandler = handler_table::Handler;

@@ -1,10 +1,11 @@
 extern crate alloc;
 
-use crate::consts::timers::*;
 use alloc::boxed::Box;
 use kspin::SpinNoIrq;
 use lazyinit::LazyInit;
 use timer_list::{TimeValue, TimerEvent, TimerList};
+
+use crate::consts::timers::*;
 
 // TODO:complete TimerEventFn: including guest owmer, ...
 pub struct TimerEventFn(Box<dyn FnOnce(TimeValue) + Send + 'static>);
