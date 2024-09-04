@@ -13,7 +13,7 @@ mod detect;
 mod irq;
 mod percpu;
 mod regs;
-pub mod sbi;
+mod sbi;
 mod timers;
 mod trap;
 mod vcpu;

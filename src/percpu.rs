@@ -12,6 +12,7 @@ extern "C" {
     fn trap_base();
 }
 
+/// The architecture dependent configuration of a `AxArchPerCpu`.
 pub struct RISCVPerCpu {}
 
 impl AxArchPerCpu for RISCVPerCpu {
