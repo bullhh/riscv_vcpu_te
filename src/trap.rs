@@ -1,20 +1,10 @@
 use core::mem::size_of;
 
 use memoffset::offset_of;
-use memory_addr::VirtAddr;
-use page_table_entry::MappingFlags;
 use riscv::register::scause::{self, Exception as E, Trap};
 use riscv::register::{hstatus, htinst, htval, stval};
 
-use crate::consts::stack::EXCEPTION_STACK_SIZE;
-use crate::irq::handler_irq;
 use crate::regs::*;
-
-extern "C" {
-    fn vmexit_riscv_handler(state: *mut VmCpuRegisters);
-}
-
-static mut EXCEPTION_STACK: [u8; EXCEPTION_STACK_SIZE] = [0; EXCEPTION_STACK_SIZE];
 
 #[allow(dead_code)]
 const fn hyp_gpr_offset(index: GprIndex) -> usize {
@@ -46,7 +36,6 @@ macro_rules! guest_csr_offset {
 
 core::arch::global_asm!(
     include_str!("trap.S"),
-    trapframe_size = const core::mem::size_of::<VmCpuRegisters>(),
     hyp_ra = const hyp_gpr_offset(GprIndex::RA),
     hyp_gp = const hyp_gpr_offset(GprIndex::GP),
     hyp_tp = const hyp_gpr_offset(GprIndex::TP),
@@ -112,75 +101,5 @@ core::arch::global_asm!(
     guest_hstatus = const guest_csr_offset!(hstatus),
     guest_scounteren = const guest_csr_offset!(scounteren),
     guest_sepc = const guest_csr_offset!(sepc),
-    exception_stack = sym EXCEPTION_STACK,
-    exception_stack_size = const EXCEPTION_STACK_SIZE,
 );
 
-fn handle_breakpoint(sepc: &mut usize) {
-    debug!("Exception(Breakpoint) @ {:#x} ", sepc);
-    *sepc += 2
-}
-
-fn handle_page_fault(tf: &VmCpuRegisters, access_flags: MappingFlags, is_user: bool) {
-    let vaddr = VirtAddr::from(stval::read());
-
-    panic!(
-        "Unhandled {} Page Fault @ {:#x}, fault_vaddr={:#x} ({:?}):\n{:#x?}",
-        if is_user { "User" } else { "Supervisor" },
-        tf.guest_regs.sepc,
-        vaddr,
-        access_flags,
-        tf.guest_regs,
-    );
-}
-
-#[no_mangle]
-fn trap_handler(tf: &mut VmCpuRegisters, from_user: bool) {
-    let hstatus = hstatus::read();
-
-    match hstatus.spv() {
-        true => {
-            // from V = 1
-            // info!("trap from guest!");
-            tf.trap_csrs.scause = scause::read().bits();
-            // info!("scause:{:x}", scause::read().bits());
-            tf.trap_csrs.stval = stval::read();
-            tf.trap_csrs.htval = htval::read();
-            tf.trap_csrs.htinst = htinst::read();
-
-            unsafe {
-                vmexit_riscv_handler(tf);
-            }
-        }
-        _ => {
-            // from V = 0
-
-            let scause = scause::read();
-            // info!("trap not from guest! scause: {:?}", scause.cause());
-            match scause.cause() {
-                Trap::Exception(E::LoadPageFault) => {
-                    handle_page_fault(tf, MappingFlags::READ, from_user)
-                }
-                Trap::Exception(E::StorePageFault) => {
-                    handle_page_fault(tf, MappingFlags::WRITE, from_user)
-                }
-                Trap::Exception(E::InstructionPageFault) => {
-                    handle_page_fault(tf, MappingFlags::EXECUTE, from_user)
-                }
-                Trap::Exception(E::Breakpoint) => handle_breakpoint(&mut tf.guest_regs.sepc),
-                Trap::Interrupt(_) => {
-                    // handle_trap!(IRQ, scause.bits());
-                    handler_irq(scause.bits());
-                }
-                _ => {
-                    panic!(
-                        "Unhandled trap {:?} @ {:#x}:\n{:#x?}",
-                        scause.cause(),
-                        tf.guest_regs.sepc,
-                        tf.guest_regs
-                    );
-                }
-            }
-        }
-    }
-}

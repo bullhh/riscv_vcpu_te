@@ -5,15 +5,13 @@ use axerrno::AxResult;
 use axvcpu::AxArchVCpu;
 use axvcpu::AxVCpuExitReason;
 use riscv::addr::BitField;
-use riscv::register::{hstatus, hvip, scause, sstatus};
+use riscv::register::{hstatus, hvip, scause, sstatus, stval, htval, htinst, sie};
 use sbi_rt::{pmu_counter_get_info, pmu_counter_stop};
+use timer_list::TimeValue;
 
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
-use crate::irq;
 use crate::regs::*;
 use crate::sbi::{BaseFunction, PmuFunction, RemoteFenceFunction, SbiMessage};
-use crate::timers::register_timer;
-use crate::timers::TimerEventFn;
 
 extern "C" {
     fn _run_guest(state: *mut VmCpuRegisters);
@@ -81,6 +79,7 @@ impl AxArchVCpu for RISCVVCpu {
     }
 
     fn run(&mut self) -> AxResult<AxVCpuExitReason> {
+        info!("run");
         let regs = &mut self.regs;
         unsafe {
             // Safe to run the guest as it only touches memory assigned to it by being owned
@@ -129,52 +128,42 @@ impl RISCVVCpu {
 
 impl RISCVVCpu {
     fn vmexit_handler(&mut self) -> AxResult<AxVCpuExitReason> {
-        let scause = self.regs.trap_csrs.scause;
+        self.regs.trap_csrs.scause = scause::read().bits();
+        self.regs.trap_csrs.stval = stval::read();
+        self.regs.trap_csrs.htval = htval::read();
+        self.regs.trap_csrs.htinst = htinst::read();
+
+        let scause = scause::read();
         use scause::{Exception, Interrupt, Trap};
-        if scause.get_bit(size_of::<usize>() * 8 - 1) {
-            match Trap::Interrupt(Interrupt::from(
-                scause & !(1 << (size_of::<usize>() * 8 - 1)),
-            )) {
-                Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                    // info!("timer irq emulation");
-                    irq::handler_irq(TIMER_IRQ_NUM);
-                    Ok(AxVCpuExitReason::Nothing)
-                }
-                Trap::Interrupt(Interrupt::SupervisorExternal) => {
-                    Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
-                }
-                _ => {
-                    panic!(
-                        "Unhandled trap: {:?}, sepc: {:#x}, stval: {:#x}",
-                        Trap::Interrupt(Interrupt::from(scause)),
-                        self.regs.guest_regs.sepc,
-                        self.regs.trap_csrs.stval
-                    );
-                }
+        match scause.cause() {
+            
+            Trap::Interrupt(Interrupt::SupervisorTimer) => {
+                // info!("timer irq emulation");
+                // irq::handler_irq(TIMER_IRQ_NUM);
+                Ok(AxVCpuExitReason::TimerIrq)
             }
-        } else {
-            match Trap::Exception(Exception::from(
-                scause & !(1 << (size_of::<usize>() * 8 - 1)),
-            )) {
-                Trap::Exception(Exception::VirtualSupervisorEnvCall) => self.handle_sbi_msg(),
-                Trap::Exception(Exception::LoadGuestPageFault)
-                | Trap::Exception(Exception::StoreGuestPageFault) => {
-                    let fault_addr =
-                        self.regs.trap_csrs.htval << 2 | self.regs.trap_csrs.stval & 0x3;
-                    Ok(AxVCpuExitReason::NestedPageFault {
-                        addr: GuestPhysAddr::from(fault_addr),
-                        access_flags: MappingFlags::empty(),
-                    })
-                }
-                _ => {
-                    panic!(
-                        "Unhandled trap: {:?}, sepc: {:#x}, stval: {:#x}",
-                        Trap::Exception(Exception::from(scause)),
-                        self.regs.guest_regs.sepc,
-                        self.regs.trap_csrs.stval
-                    );
-                }
+            Trap::Interrupt(Interrupt::SupervisorExternal) => {
+                Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
             }
+            Trap::Exception(Exception::VirtualSupervisorEnvCall) => self.handle_sbi_msg(),
+            Trap::Exception(Exception::LoadGuestPageFault)
+            | Trap::Exception(Exception::StoreGuestPageFault) => {
+                let fault_addr =
+                    self.regs.trap_csrs.htval << 2 | self.regs.trap_csrs.stval & 0x3;
+                Ok(AxVCpuExitReason::NestedPageFault {
+                    addr: GuestPhysAddr::from(fault_addr),
+                    access_flags: MappingFlags::empty(),
+                })
+            }
+            _ => {
+                panic!(
+                    "Unhandled trap: {:?}, sepc: {:#x}, stval: {:#x}",
+                    scause.cause(),
+                    self.regs.guest_regs.sepc,
+                    self.regs.trap_csrs.stval
+                );
+            }
+            
         }
     }
 
@@ -197,13 +186,11 @@ impl RISCVVCpu {
                     unsafe {
                         hvip::clear_vstip();
                     }
-
-                    register_timer(
-                        timer * 100,
-                        TimerEventFn::new(|_now| unsafe {
-                            hvip::set_vstip();
-                        }),
-                    );
+                    let callback = |_now: TimeValue| {
+                        //TODO: add hvip to regs, and modify hvip in regs
+                        unsafe { hvip::set_vstip() };
+                    };
+                    return Ok(AxVCpuExitReason::SetTimer { time: (timer*100) as u64, callback: callback });
                 }
                 SbiMessage::Reset(_) => {
                     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::SystemFailure);

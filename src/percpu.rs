@@ -1,15 +1,14 @@
 use axerrno::{AxError, AxResult};
 use axvcpu::AxArchPerCpu;
+use riscv::register::sstatus;
 use riscv::register::{hedeleg, hideleg, hvip, sie, stvec};
 
 use crate::consts::traps;
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
 use crate::has_hardware_support;
-use crate::irq;
-use crate::timers;
 
 extern "C" {
-    fn trap_base();
+    fn _guest_exit();
 }
 
 /// The architecture dependent configuration of a `AxArchPerCpu`.
@@ -20,22 +19,6 @@ impl AxArchPerCpu for RISCVPerCpu {
         unsafe {
             setup_csrs();
         }
-
-        if cpu_id == 0 {
-            irq::register_handler(TIMER_IRQ_NUM, || {
-                unsafe {
-                    sie::clear_stimer();
-                }
-
-                timers::check_events();
-                timers::scheduler_next_event();
-                unsafe {
-                    sie::set_stimer();
-                }
-            });
-        }
-
-        timers::init();
         sbi_rt::set_timer(0);
         Ok(Self {})
     }
@@ -94,5 +77,7 @@ unsafe fn setup_csrs() {
     sie::set_ssoft();
     sie::set_stimer();
 
-    stvec::write(trap_base as usize, stvec::TrapMode::Direct);
+    sstatus::clear_sie();
+
+    stvec::write(_guest_exit as usize, stvec::TrapMode::Direct);
 }

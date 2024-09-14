@@ -10,11 +10,9 @@ extern crate log;
 
 mod consts;
 mod detect;
-mod irq;
 mod percpu;
 mod regs;
 mod sbi;
-mod timers;
 mod trap;
 mod vcpu;
 

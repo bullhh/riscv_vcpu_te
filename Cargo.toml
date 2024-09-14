@@ -21,7 +21,8 @@ page_table_entry = "0.3.3"
 memory_addr = "0.2.0"
 
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
+# axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
+axvcpu = { path = "../axvcpu" }
 
 kspin = "0.1"
 lazyinit = "0.2"

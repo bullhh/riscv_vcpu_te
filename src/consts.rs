@@ -36,15 +36,3 @@ pub mod traps {
         pub const STORE_PAGE_FAULT: usize = 1 << 15;
     }
 }
-
-pub mod timers {
-    pub const TICKS_PER_SEC: u64 = 100;
-    pub const NANOS_PER_SEC: u64 = 1_000_000_000;
-    pub const PERIODIC_INTERVAL_NANOS: u64 = NANOS_PER_SEC / TICKS_PER_SEC;
-    pub const TIMER_FREQUENCY: u64 = 10_000_000;
-    pub const NANOS_PER_TICK: u64 = NANOS_PER_SEC / TIMER_FREQUENCY;
-}
-
-pub mod stack {
-    pub const EXCEPTION_STACK_SIZE: usize = 8192;
-}
