@@ -7,10 +7,6 @@ use crate::consts::traps;
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
 use crate::has_hardware_support;
 
-extern "C" {
-    fn _guest_exit();
-}
-
 /// The architecture dependent configuration of a `AxArchPerCpu`.
 pub struct RISCVPerCpu {}
 
@@ -76,8 +72,4 @@ unsafe fn setup_csrs() {
     sie::set_sext();
     sie::set_ssoft();
     sie::set_stimer();
-
-    sstatus::clear_sie();
-
-    stvec::write(_guest_exit as usize, stvec::TrapMode::Direct);
 }

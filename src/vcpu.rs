@@ -5,7 +5,7 @@ use axerrno::AxResult;
 use axvcpu::AxArchVCpu;
 use axvcpu::AxVCpuExitReason;
 use riscv::addr::BitField;
-use riscv::register::{hstatus, hvip, scause, sstatus, stval, htval, htinst, sie};
+use riscv::register::{hstatus, hvip, scause, sstatus, stval, htval, htinst, sie, stvec};
 use sbi_rt::{pmu_counter_get_info, pmu_counter_stop};
 use timer_list::TimeValue;
 
@@ -15,6 +15,8 @@ use crate::sbi::{BaseFunction, PmuFunction, RemoteFenceFunction, SbiMessage};
 
 extern "C" {
     fn _run_guest(state: *mut VmCpuRegisters);
+    fn _guest_exit();
+    
 }
 
 /// The architecture dependent configuration of a `AxArchVCpu`.
@@ -79,12 +81,25 @@ impl AxArchVCpu for RISCVVCpu {
     }
 
     fn run(&mut self) -> AxResult<AxVCpuExitReason> {
-        info!("run");
+        // info!("run");
         let regs = &mut self.regs;
+        unsafe {
+            sstatus::clear_sie();
+            sie::set_sext();
+            sie::set_ssoft();
+            sie::set_stimer();
+        }
         unsafe {
             // Safe to run the guest as it only touches memory assigned to it by being owned
             // by its page table
             _run_guest(regs);
+        }
+        unsafe {
+            sie::clear_sext();
+            sie::clear_ssoft();
+            sie::clear_stimer();
+            // sstatus::clear_sie();
+            // info!("sstatus: {:x?}",sstatus::read());
         }
         self.vmexit_handler()
     }
@@ -134,6 +149,10 @@ impl RISCVVCpu {
         self.regs.trap_csrs.htinst = htinst::read();
 
         let scause = scause::read();
+        // info!(
+        //     "trap: {:?}",
+        //     scause.cause()
+        // );
         use scause::{Exception, Interrupt, Trap};
         match scause.cause() {
             

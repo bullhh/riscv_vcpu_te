@@ -63,7 +63,7 @@ core::arch::global_asm!(
     hyp_sstatus = const hyp_csr_offset!(sstatus),
     hyp_hstatus = const hyp_csr_offset!(hstatus),
     hyp_scounteren = const hyp_csr_offset!(scounteren),
-    // hyp_stvec = const hyp_csr_offset!(stvec),
+    hyp_stvec = const hyp_csr_offset!(stvec),
     hyp_sscratch = const hyp_csr_offset!(sscratch),
     guest_ra = const guest_gpr_offset(GprIndex::RA),
     guest_gp = const guest_gpr_offset(GprIndex::GP),

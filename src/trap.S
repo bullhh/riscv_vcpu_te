@@ -1,4 +1,3 @@
-
 /// Enter the guest given in `VmCpuRegisters` from `a0`
 .global _run_guest
 _run_guest:
@@ -44,6 +43,11 @@ _run_guest:
 
     ld    t1, ({guest_sepc})(a0)
     csrw  sepc, t1
+
+    /* Set stvec so that hypervisor resumes after the sret when the guest exits. */
+    la    t1, _guest_exit
+    csrrw t1, stvec, t1
+    sd    t1, ({hyp_stvec})(a0)
 
     /* Save sscratch and replace with pointer to GuestInfo. */
     csrrw t1, sscratch, a0
@@ -126,21 +130,7 @@ _guest_exit:
     sd    t0, ({guest_a0})(a0)
 
 _restore_csrs:
-    /* Swap in hypervisor CSRs. */
-    ld    t1, ({hyp_sstatus})(a0)
-    csrrw t1, sstatus, t1
-    sd    t1, ({guest_sstatus})(a0)
-
-    ld    t1, ({hyp_hstatus})(a0)
-    csrrw t1, hstatus, t1
-    sd    t1, ({guest_hstatus})(a0)
-
-    ld    t1, ({hyp_scounteren})(a0)
-    csrrw t1, scounteren, t1
-    sd    t1, ({guest_scounteren})(a0)
-
-    ld    t1, ({hyp_sscratch})(a0)
-    csrw  sscratch, t1
+    
 
     /* Save guest EPC. */
     csrr  t1, sepc
@@ -171,5 +161,26 @@ _restore_csrs:
     ld   s10, ({hyp_s10})(a0)
     ld   s11, ({hyp_s11})(a0)
     ld   sp, ({hyp_sp})(a0)
+
+    /* Swap in hypervisor CSRs. */
+    
+
+    ld    t1, ({hyp_hstatus})(a0)
+    csrrw t1, hstatus, t1
+    sd    t1, ({guest_hstatus})(a0)
+
+    ld    t1, ({hyp_scounteren})(a0)
+    csrrw t1, scounteren, t1
+    sd    t1, ({guest_scounteren})(a0)
+
+    ld    t1, ({hyp_stvec})(a0)
+    csrw  stvec, t1
+
+    ld    t1, ({hyp_sscratch})(a0)
+    csrw  sscratch, t1
+
+    ld    t1, ({hyp_sstatus})(a0)
+    csrrw t1, sstatus, t1
+    sd    t1, ({guest_sstatus})(a0)
 
     ret
