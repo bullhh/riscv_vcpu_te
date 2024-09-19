@@ -12,6 +12,7 @@ use timer_list::TimeValue;
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
 use crate::regs::*;
 use crate::sbi::{BaseFunction, PmuFunction, RemoteFenceFunction, SbiMessage};
+use crate::timers::scheduler_next_event;
 
 extern "C" {
     fn _run_guest(state: *mut VmCpuRegisters);
@@ -81,7 +82,6 @@ impl AxArchVCpu for RISCVVCpu {
     }
 
     fn run(&mut self) -> AxResult<AxVCpuExitReason> {
-        // info!("run");
         let regs = &mut self.regs;
         unsafe {
             sstatus::clear_sie();
@@ -89,6 +89,8 @@ impl AxArchVCpu for RISCVVCpu {
             sie::set_ssoft();
             sie::set_stimer();
         }
+
+        // debug!("before run");
         unsafe {
             // Safe to run the guest as it only touches memory assigned to it by being owned
             // by its page table
@@ -98,8 +100,7 @@ impl AxArchVCpu for RISCVVCpu {
             sie::clear_sext();
             sie::clear_ssoft();
             sie::clear_stimer();
-            // sstatus::clear_sie();
-            // info!("sstatus: {:x?}",sstatus::read());
+            sstatus::set_sie();
         }
         self.vmexit_handler()
     }
@@ -156,9 +157,15 @@ impl RISCVVCpu {
         match scause.cause() {
             
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                // info!("timer irq emulation");
-                // irq::handler_irq(TIMER_IRQ_NUM);
-                Ok(AxVCpuExitReason::TimerIrq)
+                info!("timer irq emulation");
+                // crate::timers::check_events();
+                // crate::timers::scheduler_next_event();
+                sbi_rt::set_timer(0);
+                unsafe {
+                    sie::set_stimer();
+                }
+                Ok(AxVCpuExitReason::Nothing)
+                // Ok(AxVCpuExitReason::TimerIrq)
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
@@ -209,13 +216,21 @@ impl RISCVVCpu {
                     unsafe {
                         hvip::clear_vstip();
                     }
+                    info!("hvip:{:x?}",hvip::read());
                     let callback = |_now: TimeValue| {
                         //TODO: add hvip to regs, and modify hvip in regs
                         unsafe { hvip::set_vstip() };
+                        info!("call hvip:{:x?}",hvip::read());
                     };
                     // watch out!
                     self.advance_pc(4);
                     return Ok(AxVCpuExitReason::SetTimer { time: (timer*100) as u64, callback: callback });
+                    // crate::timers::register_timer(
+                    //     timer * 100,
+                    //     crate::timers::TimerEventFn::new(|_now| unsafe {
+                    //         hvip::set_vstip();
+                    //     }),
+                    // );
                 }
                 SbiMessage::Reset(_) => {
                     sbi_rt::system_reset(sbi_rt::Shutdown, sbi_rt::SystemFailure);

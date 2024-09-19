@@ -29,3 +29,5 @@ lazyinit = "0.2"
 timer_list = "0.1.0"
 handler_table = "0.1"
 percpu = { version = "0.1.4", features = ["arm-el2"] }
+
+axhal = { path = "../arceos/modules/axhal" }

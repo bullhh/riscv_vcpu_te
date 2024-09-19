@@ -15,6 +15,7 @@ mod regs;
 mod sbi;
 mod trap;
 mod vcpu;
+mod timers;
 
 pub use self::percpu::RISCVPerCpu;
 pub use self::vcpu::RISCVVCpu;

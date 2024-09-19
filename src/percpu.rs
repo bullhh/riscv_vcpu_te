@@ -6,6 +6,7 @@ use riscv::register::{hedeleg, hideleg, hvip, sie, stvec};
 use crate::consts::traps;
 use crate::consts::traps::irq::TIMER_IRQ_NUM;
 use crate::has_hardware_support;
+use super::timers;
 
 /// The architecture dependent configuration of a `AxArchPerCpu`.
 pub struct RISCVPerCpu {}
@@ -15,7 +16,8 @@ impl AxArchPerCpu for RISCVPerCpu {
         unsafe {
             setup_csrs();
         }
-        sbi_rt::set_timer(0);
+
+        // timers::init();
         Ok(Self {})
     }
 
