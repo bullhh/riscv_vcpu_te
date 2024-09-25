@@ -149,10 +149,9 @@ impl RISCVVCpu {
         self.regs.trap_csrs.htinst = htinst::read();
 
         let scause = scause::read();
-        // info!(
-        //     "trap: {:?}",
-        //     scause.cause()
-        // );
+
+        // info!("trap: {:?}", scause.cause());
+
         use scause::{Exception, Interrupt, Trap};
         match scause.cause() {
             
@@ -164,7 +163,9 @@ impl RISCVVCpu {
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
             }
-            Trap::Exception(Exception::VirtualSupervisorEnvCall) => self.handle_sbi_msg(),
+            Trap::Exception(Exception::VirtualSupervisorEnvCall) => {
+                self.handle_sbi_msg()
+            }
             Trap::Exception(Exception::LoadGuestPageFault)
             | Trap::Exception(Exception::StoreGuestPageFault) => {
                 let fault_addr =
@@ -188,6 +189,9 @@ impl RISCVVCpu {
 
     fn handle_sbi_msg(&mut self) -> AxResult<AxVCpuExitReason> {
         let sbi_msg = SbiMessage::from_regs(self.regs.guest_regs.gprs.a_regs()).ok();
+
+        // info!("sbi: {:#?}", sbi_msg);
+
         if let Some(sbi_msg) = sbi_msg {
             match sbi_msg {
                 SbiMessage::Base(base) => {
@@ -209,6 +213,8 @@ impl RISCVVCpu {
                         //TODO: add hvip to regs, and modify hvip in regs
                         unsafe { hvip::set_vstip() };
                     };
+                    // watch out!
+                    self.advance_pc(4);
                     return Ok(AxVCpuExitReason::SetTimer { time: (timer*100) as u64, callback: callback });
                 }
                 SbiMessage::Reset(_) => {
@@ -220,7 +226,9 @@ impl RISCVVCpu {
                 SbiMessage::PMU(pmu) => {
                     self.handle_pmu_function(pmu)?;
                 }
-                _ => todo!(),
+                _ => {
+                    todo!();
+                },
             }
             self.advance_pc(4);
             Ok(AxVCpuExitReason::Nothing)
