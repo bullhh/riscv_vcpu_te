@@ -5,16 +5,14 @@ use memoffset::offset_of;
 use riscv::register::{htinst, htval, scause, sstatus, stval};
 use rustsbi::{Forward, RustSBI, Timer};
 use sbi_spec::{hsm, legacy};
-use tock_registers::LocalRegisterCopy;
 
 use axaddrspace::{GuestPhysAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axerrno::AxResult;
 use axvcpu::AxVCpuExitReason;
 
-use super::csrs::defs::hstatus;
 use super::csrs::{traps, RiscvCsrTrait, CSR};
 use super::regs::{GeneralPurposeRegisters, GprIndex};
-use crate::EID_HVC;
+use crate::{RISCVVCpuCreateConfig, EID_HVC};
 
 /// Hypervisor GPR and CSR state which must be saved/restored when entering/exiting virtualization.
 #[derive(Default)]
@@ -243,46 +241,57 @@ impl rustsbi::Timer for RISCVVCpuSbiTimer {
 }
 
 impl axvcpu::AxArchVCpu for RISCVVCpu {
-    type CreateConfig = ();
+    type CreateConfig = RISCVVCpuCreateConfig;
 
     type SetupConfig = ();
 
-    fn new(_config: Self::CreateConfig) -> AxResult<Self> {
+    fn new(config: Self::CreateConfig) -> AxResult<Self> {
         let mut regs = VmCpuRegisters::default();
-        // Set hstatus
-        let mut hstatus = LocalRegisterCopy::<usize, hstatus::Register>::new(
-            riscv::register::hstatus::read().bits(),
-        );
-        hstatus.modify(hstatus::spv::Supervisor);
-        // Set SPVP bit in order to accessing VS-mode memory from HS-mode.
-        hstatus.modify(hstatus::spvp::Supervisor);
-        CSR.hstatus.write_value(hstatus.get());
-        regs.guest_regs.hstatus = hstatus.get();
+        // Setup the guest's general purpose registers.
+        // `a0` is the hartid
+        regs.guest_regs.gprs.set_reg(GprIndex::A0, config.hart_id);
+        // `a1` is the address of the device tree blob.
+        regs.guest_regs
+            .gprs
+            .set_reg(GprIndex::A1, config.dtb_addr.as_usize());
 
-        // Set sstatus
-        let mut sstatus = sstatus::read();
-        sstatus.set_spp(sstatus::SPP::Supervisor);
-        regs.guest_regs.sstatus = sstatus.bits();
-
-        regs.guest_regs.gprs.set_reg(GprIndex::A0, 0);
-        regs.guest_regs.gprs.set_reg(GprIndex::A1, 0x9000_0000);
-
-        let sbi = RISCVVCpuSbi::default();
-        Ok(Self { regs, sbi })
+        Ok(Self {
+            regs: VmCpuRegisters::default(),
+            sbi: RISCVVCpuSbi::default(),
+        })
     }
 
     fn setup(&mut self, _config: Self::SetupConfig) -> AxResult {
+        // Set sstatus.
+        let mut sstatus = sstatus::read();
+        sstatus.set_spp(sstatus::SPP::Supervisor);
+        self.regs.guest_regs.sstatus = sstatus.bits();
+
+        // Set hstatus.
+        self.regs.guest_regs.hstatus = riscv::register::hstatus::read().bits();
         Ok(())
     }
 
     fn set_entry(&mut self, entry: GuestPhysAddr) -> AxResult {
-        let regs = &mut self.regs;
-        regs.guest_regs.sepc = entry.as_usize();
+        self.regs.guest_regs.sepc = entry.as_usize();
         Ok(())
     }
 
     fn set_ept_root(&mut self, ept_root: HostPhysAddr) -> AxResult {
         self.regs.virtual_hs_csrs.hgatp = 8usize << 60 | usize::from(ept_root) >> 12;
+        Ok(())
+    }
+
+    fn run(&mut self) -> AxResult<AxVCpuExitReason> {
+        unsafe {
+            // Safe to run the guest as it only touches memory assigned to it by being owned
+            // by its page table
+            _run_guest(&mut self.regs);
+        }
+        self.vmexit_handler()
+    }
+
+    fn bind(&mut self) -> AxResult {
         unsafe {
             core::arch::asm!(
                 "csrw hgatp, {hgatp}",
@@ -293,29 +302,23 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
         Ok(())
     }
 
-    fn run(&mut self) -> AxResult<AxVCpuExitReason> {
-        let regs = &mut self.regs;
-        unsafe {
-            // Safe to run the guest as it only touches memory assigned to it by being owned
-            // by its page table
-            _run_guest(regs);
-        }
-        self.vmexit_handler()
-    }
-
-    fn bind(&mut self) -> AxResult {
-        // unimplemented!()
-        Ok(())
-    }
-
     fn unbind(&mut self) -> AxResult {
-        // unimplemented!()
         Ok(())
     }
 
     /// Set one of the vCPU's general purpose register.
     fn set_gpr(&mut self, index: usize, val: usize) {
-        self.set_gpr_from_gpr_index(GprIndex::from_raw(index as u32).unwrap(), val);
+        match index {
+            0..=7 => {
+                self.set_gpr_from_gpr_index(GprIndex::from_raw(index as u32 + 10).unwrap(), val);
+            }
+            _ => {
+                warn!(
+                    "RISCVVCpu: Unsupported general purpose register index: {}",
+                    index
+                );
+            }
+        }
     }
 }
 
@@ -423,8 +426,7 @@ impl RISCVVCpu {
                             return Ok(AxVCpuExitReason::CpuUp {
                                 target_cpu: hartid as _,
                                 entry_point: GuestPhysAddr::from(start_addr),
-                                arg: 0,
-                                opaque: opaque as _,
+                                arg: opaque as _,
                             });
                         }
                         hsm::HART_STOP => {
