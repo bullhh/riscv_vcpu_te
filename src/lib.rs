@@ -51,3 +51,7 @@ impl Default for RISCVVCpuCreateConfig {
         }
     }
 }
+
+pub fn send_ipi(to: usize) {
+    sbi_rt::send_ipi(sbi_rt::HartMask::from_mask_base(1 << to, 0));
+}
