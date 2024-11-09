@@ -6,7 +6,7 @@ use timer_list::TimeValue;
 
 use axaddrspace::{GuestPhysAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axerrno::AxResult;
-use axvcpu::AxVCpuExitReason;
+use axvcpu::{AxVCpuExitReason, SbiFunction};
 
 use crate::regs::*;
 use crate::{RISCVVCpuCreateConfig, EID_HVC};
@@ -205,6 +205,8 @@ impl RISCVVCpu {
                 let extension_id = a[7];
                 let function_id = a[6];
 
+                
+
                 match extension_id {
                     // Compatibility with Legacy Extensions.
                     legacy::LEGACY_SET_TIMER..=legacy::LEGACY_SHUTDOWN => match extension_id {
@@ -221,10 +223,19 @@ impl RISCVVCpu {
                             };
                             // watch out!
                             self.advance_pc(4);
-                            return Ok(AxVCpuExitReason::SetTimer {
-                                time: (param[0] * 100) as u64,
-                                callback: callback,
-                            });
+
+                            return Ok(AxVCpuExitReason::SbiCall(
+                                SbiFunction::SetTimer { 
+                                    deadline: (param[0] * 100) as u64,
+                                    callback: callback,
+                                }
+                            ));
+
+
+                            // return Ok(AxVCpuExitReason::SetTimer {
+                            //     time: (param[0] * 100) as u64,
+                            //     callback: callback,
+                            // });
                         }
                         legacy::LEGACY_CONSOLE_PUTCHAR => {
                             sbi_call_legacy_1(legacy::LEGACY_CONSOLE_PUTCHAR, param[0]);
@@ -303,8 +314,10 @@ impl RISCVVCpu {
                 Ok(AxVCpuExitReason::Nothing)
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                // debug!("timer irq emulation");
-                Ok(AxVCpuExitReason::TimerIrq)
+                debug!("timer irq emulation");
+                // Ok(AxVCpuExitReason::TimerIrq)
+                // TODO: which vector?
+                Ok(AxVCpuExitReason::ExternalInterrupt { vector: 10 })
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
