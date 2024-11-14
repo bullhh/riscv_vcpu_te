@@ -30,8 +30,8 @@ core::arch::global_asm!(include_str!("mem_extable.S"));
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VCpuConfig {}
 
-static mut FLAG: u64 = 0;
-static mut PRINT: u64 = 0;
+// static mut FLAG: u64 = 0;
+// static mut PRINT: u64 = 0;
 
 // #[derive(Default)]
 /// A virtual CPU within a guest
@@ -130,33 +130,36 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
 
     fn run(&mut self) -> AxResult<AxVCpuExitReason> {
 
-        unsafe {
-            if PRINT > 0 {
-                error!("before run hvip {:#x?} to phy hvip {:#x}", self.hvip.bits(), hvip::read().bits());
-                // PRINT -= 1;
-            }
+        // unsafe {
+        //     if PRINT > 0 {
+        //         error!("before run hvip {:#x?} to phy hvip {:#x}", self.hvip.bits(), hvip::read().bits());
+        //         // PRINT -= 1;
+        //     }
 
-        }
+        // }
 
         unsafe {
             self.hvip.write();
         }
 
-        assert!(self.hvip.bits() == hvip::read().bits());
+        // error!("soft hvip: {:#x}", self.hvip.bits());
+        // error!("hard hvip: {:#x}", hvip::read().bits());
 
-        assert!(vsip::read().bits() == 0);
+        // assert!(self.hvip.bits() == hvip::read().bits());
 
-        unsafe {
-            if PRINT > 0 {
-                error!("before run hip {:#x?} & vsip {:#x?}", hip::read().bits(), vsip::read().bits());
-                error!("before run hie {:#x?} & vsie {:#x?}", hie::read().bits(), vsie::read().bits());
-                error!("hideleg: {:#x}", hideleg::read().bits());
-                // error!("before run mip: {:#x}, mie:{:#x}", mip::read().bits(), mie::read().bits());
+        // assert!(vsip::read().bits() == 0);
+
+        // unsafe {
+        //     if PRINT > 0 {
+        //         error!("before run hip {:#x?} & vsip {:#x?}", hip::read().bits(), vsip::read().bits());
+        //         error!("before run hie {:#x?} & vsie {:#x?}", hie::read().bits(), vsie::read().bits());
+        //         error!("hideleg: {:#x}", hideleg::read().bits());
+        //         // error!("before run mip: {:#x}, mie:{:#x}", mip::read().bits(), mie::read().bits());
                 
-                PRINT -= 1;
-            }
+        //         PRINT -= 1;
+        //     }
 
-        }
+        // }
 
         // if unsafe {FLAG += 1; FLAG} > 30000 {
         //     error!("before run {:#x?}", hvip::read().bits());
@@ -185,18 +188,18 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
             sstatus::set_sie();
         }
 
-        assert!(vsip::read().bits() == 0);
+        // assert!(vsip::read().bits() == 0);
 
-        unsafe {
-            if PRINT > 0 {
-                error!("after run hip {:#x?} & vsip {:#x?}", hip::read().bits(), vsip::read().bits());
-                error!("after run hie {:#x?} & vsie {:#x?}", hie::read().bits(), vsie::read().bits());
-                error!("hideleg: {:#x}", hideleg::read().bits());
-                // error!("after run mip: {:#x}, mie:{:#x}", mip::read().bits(), mie::read().bits());
-                PRINT -= 1;
-            }
+        // unsafe {
+        //     if PRINT > 0 {
+        //         error!("after run hip {:#x?} & vsip {:#x?}", hip::read().bits(), vsip::read().bits());
+        //         error!("after run hie {:#x?} & vsie {:#x?}", hie::read().bits(), vsie::read().bits());
+        //         error!("hideleg: {:#x}", hideleg::read().bits());
+        //         // error!("after run mip: {:#x}, mie:{:#x}", mip::read().bits(), mie::read().bits());
+        //         PRINT -= 1;
+        //     }
 
-        }
+        // }
 
 
         self.vmexit_handler()
@@ -238,9 +241,9 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
             5 => {
                 self.hvip.set_vstip(true);
                 // error!("a virq timer: {:#x}", self.hvip.bits());
-                unsafe {
-                    PRINT = 4;
-                }
+                // unsafe {
+                //     PRINT = 4;
+                // }
             }
             _ => {
                 todo!("irq_no: {}", irq);
@@ -254,9 +257,9 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
             5 => {
                 self.hvip.set_vstip(false);
                 // error!("de virq timer: {:#x}", self.hvip.bits());
-                unsafe {
-                    PRINT = 4;
-                }
+                // unsafe {
+                //     PRINT = 4;
+                // }
             }
             _ => {
                 todo!("irq_no: {}", irq);
@@ -363,9 +366,9 @@ impl RISCVVCpu {
 
                             // let callback = Callback { vcpu: self };
 
-                            unsafe {
-                                PRINT = 2;
-                            }
+                            // unsafe {
+                            //     PRINT = 2;
+                            // }
 
                             // watch out!
                             self.advance_pc(4);
@@ -384,6 +387,7 @@ impl RISCVVCpu {
                             // });
                         }
                         legacy::LEGACY_CONSOLE_PUTCHAR => {
+
                             sbi_call_legacy_1(legacy::LEGACY_CONSOLE_PUTCHAR, param[0]);
                         }
                         legacy::LEGACY_CONSOLE_GETCHAR => {
@@ -491,6 +495,7 @@ impl RISCVVCpu {
                 })
             }
             Trap::Exception(Exception::VirtualInstruction) => {
+                todo!();
                 let mut raw_inst = 0u32;
                 // Safety: _fetch_guest_instruction internally detects and handles an invalid guest virtual
                 // address in `pc' and will only write up to 4 bytes to `raw_inst`.
