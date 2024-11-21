@@ -1,12 +1,11 @@
 use riscv::register::hstatus;
 use riscv::register::{htinst, htval, hvip, scause, sie, sstatus, stval};
-use rustsbi::{Forward, RustSBI};
+use rustsbi::{Forward, RustSBI, Timer};
 use sbi_spec::{hsm, legacy};
-use timer_list::TimeValue;
 
 use axaddrspace::{GuestPhysAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axerrno::AxResult;
-use axvcpu::AxVCpuExitReason;
+use axvcpu::{AxVCpuExitReason, AxVCpuHal};
 
 use crate::regs::*;
 use crate::{RISCVVCpuCreateConfig, EID_HVC};
@@ -21,14 +20,14 @@ pub struct VCpuConfig {}
 
 #[derive(Default)]
 /// A virtual CPU within a guest
-pub struct RISCVVCpu {
+pub struct RISCVVCpu<H: AxVCpuHal> {
     regs: VmCpuRegisters,
     sbi: RISCVVCpuSbi,
+    _marker: core::marker::PhantomData<H>,
 }
 
 #[derive(RustSBI)]
 struct RISCVVCpuSbi {
-    // timer: RISCVVCpuSbiTimer,
     #[rustsbi(console, pmu, fence, reset, info, hsm)]
     forward: Forward,
 }
@@ -37,28 +36,12 @@ impl Default for RISCVVCpuSbi {
     #[inline]
     fn default() -> Self {
         Self {
-            // timer: RISCVVCpuSbiTimer,
             forward: Forward,
         }
     }
 }
 
-// struct RISCVVCpuSbiTimer;
-
-// impl rustsbi::Timer for RISCVVCpuSbiTimer {
-//     #[inline]
-//     fn set_timer(&self, stime_value: u64) {
-//         sbi_rt::set_timer(stime_value);
-//         // Clear guest timer interrupt
-//         CSR.hvip
-//             .read_and_clear_bits(traps::interrupt::VIRTUAL_SUPERVISOR_TIMER);
-//         //  Enable host timer interrupt
-//         CSR.sie
-//             .read_and_set_bits(traps::interrupt::SUPERVISOR_TIMER);
-//     }
-// }
-
-impl axvcpu::AxArchVCpu for RISCVVCpu {
+impl<H: AxVCpuHal> axvcpu::AxArchVCpu for RISCVVCpu<H> {
     type CreateConfig = RISCVVCpuCreateConfig;
 
     type SetupConfig = ();
@@ -76,6 +59,7 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
         Ok(Self {
             regs: VmCpuRegisters::default(),
             sbi: RISCVVCpuSbi::default(),
+            _marker: core::marker::PhantomData,
         })
     }
 
@@ -159,7 +143,7 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
     }
 }
 
-impl RISCVVCpu {
+impl<H: AxVCpuHal> RISCVVCpu<H> {
     /// Gets one of the vCPU's general purpose registers.
     pub fn get_gpr(&self, index: GprIndex) -> usize {
         self.regs.guest_regs.gprs.reg(index)
@@ -181,7 +165,7 @@ impl RISCVVCpu {
     }
 }
 
-impl RISCVVCpu {
+impl<H: AxVCpuHal> RISCVVCpu<H> {
     fn vmexit_handler(&mut self) -> AxResult<AxVCpuExitReason> {
         self.regs.trap_csrs.scause = scause::read().bits();
         self.regs.trap_csrs.stval = stval::read();
@@ -209,22 +193,15 @@ impl RISCVVCpu {
                     // Compatibility with Legacy Extensions.
                     legacy::LEGACY_SET_TIMER..=legacy::LEGACY_SHUTDOWN => match extension_id {
                         legacy::LEGACY_SET_TIMER => {
-                            // Clear guest timer interrupt
+                            sbi_rt::set_timer(param[0] as u64);
                             unsafe {
+                                // Clear guest timer interrupt
                                 hvip::clear_vstip();
+                                //  Enable host timer interrupt
+                                sie::set_stimer();
                             }
-                            // info!("hvip:{:x?}",hvip::read());
-                            let callback = |_now: TimeValue| {
-                                //TODO: add hvip to regs, and modify hvip in regs
-                                unsafe { hvip::set_vstip() };
-                                // info!("call hvip:{:x?}",hvip::read());
-                            };
-                            // watch out!
-                            self.advance_pc(4);
-                            return Ok(AxVCpuExitReason::SetTimer {
-                                time: (param[0] * 100) as u64,
-                                callback: callback,
-                            });
+
+                            self.set_gpr_from_gpr_index(GprIndex::A0, 0);
                         }
                         legacy::LEGACY_CONSOLE_PUTCHAR => {
                             sbi_call_legacy_1(legacy::LEGACY_CONSOLE_PUTCHAR, param[0]);
@@ -303,8 +280,13 @@ impl RISCVVCpu {
                 Ok(AxVCpuExitReason::Nothing)
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                // debug!("timer irq emulation");
-                Ok(AxVCpuExitReason::TimerIrq)
+                unsafe {
+                    hvip::set_vstip();
+                    // Clear host timer interrupt
+                    sie::clear_stimer();
+                }
+
+                Ok(AxVCpuExitReason::Nothing)
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
