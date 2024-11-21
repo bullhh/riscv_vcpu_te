@@ -35,9 +35,7 @@ struct RISCVVCpuSbi {
 impl Default for RISCVVCpuSbi {
     #[inline]
     fn default() -> Self {
-        Self {
-            forward: Forward,
-        }
+        Self { forward: Forward }
     }
 }
 

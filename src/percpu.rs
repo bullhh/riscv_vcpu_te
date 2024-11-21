@@ -1,6 +1,6 @@
-use core::marker::PhantomData;
 use axerrno::{AxError, AxResult};
 use axvcpu::{AxArchPerCpu, AxVCpuHal};
+use core::marker::PhantomData;
 use riscv::register::{hedeleg, hideleg, hvip, sie};
 
 use crate::consts::traps;
