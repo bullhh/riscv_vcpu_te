@@ -193,12 +193,11 @@ impl<H: AxVCpuHal> RISCVVCpu<H> {
                     // Compatibility with Legacy Extensions.
                     legacy::LEGACY_SET_TIMER..=legacy::LEGACY_SHUTDOWN => match extension_id {
                         legacy::LEGACY_SET_TIMER => {
-                            sbi_rt::set_timer(param[0] as u64);
+                            // info!("set timer: {}", param[0]);
+                            sbi_rt::set_timer((param[0]) as u64);
                             unsafe {
                                 // Clear guest timer interrupt
                                 hvip::clear_vstip();
-                                //  Enable host timer interrupt
-                                sie::set_stimer();
                             }
 
                             self.set_gpr_from_gpr_index(GprIndex::A0, 0);
@@ -282,8 +281,7 @@ impl<H: AxVCpuHal> RISCVVCpu<H> {
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
                 unsafe {
                     hvip::set_vstip();
-                    // Clear host timer interrupt
-                    sie::clear_stimer();
+                    sie::set_stimer();
                 }
 
                 Ok(AxVCpuExitReason::Nothing)
