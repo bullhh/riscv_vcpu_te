@@ -277,6 +277,7 @@ impl<H: AxVCpuHal> RISCVVCpu<H> {
                 Ok(AxVCpuExitReason::Nothing)
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
+                // Enable guest timer interrupt
                 unsafe {
                     hvip::set_vstip();
                     sie::set_stimer();
