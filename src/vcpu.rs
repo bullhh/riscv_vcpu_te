@@ -1,28 +1,33 @@
 use riscv::register::hstatus;
 use riscv::register::{htinst, htval, hvip, scause, sie, sstatus, stval};
+use riscv_decode::Instruction;
 use rustsbi::{Forward, RustSBI, Timer};
-use sbi_spec::{hsm, legacy};
+use sbi_spec::{base, hsm, legacy, spi, time};
 
 use axaddrspace::{GuestPhysAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axerrno::AxResult;
-use axvcpu::{AxVCpuExitReason, AxVCpuHal};
+use axvcpu::{AxVCpuExitReason, AxVCpuHal, SbiFunction};
 
 use crate::regs::*;
 use crate::{RISCVVCpuCreateConfig, EID_HVC};
 
 extern "C" {
     fn _run_guest(state: *mut VmCpuRegisters);
+    fn _fetch_guest_instruction(gva: usize, raw_inst: *mut u32) -> isize;
 }
+
+core::arch::global_asm!(include_str!("mem_extable.S"));
 
 /// The architecture dependent configuration of a `AxArchVCpu`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VCpuConfig {}
 
-#[derive(Default)]
+// #[derive(Default)]
 /// A virtual CPU within a guest
 pub struct RISCVVCpu<H: AxVCpuHal> {
     regs: VmCpuRegisters,
     sbi: RISCVVCpuSbi,
+    hvip: hvip::Hvip,
     _marker: core::marker::PhantomData<H>,
 }
 
@@ -57,6 +62,7 @@ impl<H: AxVCpuHal> axvcpu::AxArchVCpu for RISCVVCpu<H> {
         Ok(Self {
             regs: VmCpuRegisters::default(),
             sbi: RISCVVCpuSbi::default(),
+            hvip: hvip::Hvip::from_bits(0),
             _marker: core::marker::PhantomData,
         })
     }
@@ -90,6 +96,9 @@ impl<H: AxVCpuHal> axvcpu::AxArchVCpu for RISCVVCpu<H> {
     }
 
     fn run(&mut self) -> AxResult<AxVCpuExitReason> {
+        unsafe {
+            self.hvip.write();
+        }
         unsafe {
             sstatus::clear_sie();
             sie::set_sext();
@@ -136,6 +145,23 @@ impl<H: AxVCpuHal> axvcpu::AxArchVCpu for RISCVVCpu<H> {
                     "RISCVVCpu: Unsupported general purpose register index: {}",
                     index
                 );
+            }
+        }
+    }
+
+    fn inject_interrupt(&mut self, vector: usize) -> AxResult {
+        // info!("{}",vector);
+        match vector {
+            5 => {
+                self.hvip.set_vstip(true);
+                // error!("de virq timer: {:#x}", self.hvip.bits());
+                // unsafe {
+                //     PRINT = 4;
+                // }
+                Ok(())
+            }
+            _ => {
+                todo!("vector: {}", vector);
             }
         }
     }
@@ -188,17 +214,43 @@ impl<H: AxVCpuHal> RISCVVCpu<H> {
                 let function_id = a[6];
 
                 match extension_id {
+                    time::EID_TIME => {
+                        self.advance_pc(4);
+                        
+                        // Clear guest timer interrupt
+                        self.hvip.set_vstip(false);
+                        
+                        return Ok(AxVCpuExitReason::SbiCall(
+                            SbiFunction::SetTimer { 
+                                deadline: (param[0] * 100) as u64,
+                                // callback: callback,
+                            }
+                        ));
+                    }
+                    spi::EID_SPI => {
+                        let hart_mask = param[0] as u64;
+                        let hart_mask_base = param[1] as u64;
+
+                        // watch out!
+                        self.advance_pc(4);
+                        return Ok(AxVCpuExitReason::IPI { mask: hart_mask, base: hart_mask_base });
+                    }
                     // Compatibility with Legacy Extensions.
                     legacy::LEGACY_SET_TIMER..=legacy::LEGACY_SHUTDOWN => match extension_id {
                         legacy::LEGACY_SET_TIMER => {
                             // info!("set timer: {}", param[0]);
-                            sbi_rt::set_timer((param[0]) as u64);
-                            unsafe {
-                                // Clear guest timer interrupt
-                                hvip::clear_vstip();
-                            }
+                            self.advance_pc(4);
+                            
+                            // Clear guest timer interrupt
+                            self.hvip.set_vstip(false);
+                            
 
-                            self.set_gpr_from_gpr_index(GprIndex::A0, 0);
+                            return Ok(AxVCpuExitReason::SbiCall(
+                                SbiFunction::SetTimer { 
+                                    deadline: (param[0] * 100) as u64,
+                                    // callback: callback,
+                                }
+                            ));
                         }
                         legacy::LEGACY_CONSOLE_PUTCHAR => {
                             sbi_call_legacy_1(legacy::LEGACY_CONSOLE_PUTCHAR, param[0]);
@@ -278,12 +330,7 @@ impl<H: AxVCpuHal> RISCVVCpu<H> {
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
                 // Enable guest timer interrupt
-                unsafe {
-                    hvip::set_vstip();
-                    sie::set_stimer();
-                }
-
-                Ok(AxVCpuExitReason::Nothing)
+                Ok(AxVCpuExitReason::ExternalInterrupt { vector: 10 })
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 Ok(AxVCpuExitReason::ExternalInterrupt { vector: 0 })
@@ -295,6 +342,28 @@ impl<H: AxVCpuHal> RISCVVCpu<H> {
                     addr: GuestPhysAddr::from(fault_addr),
                     access_flags: MappingFlags::empty(),
                 })
+            }
+            Trap::Exception(Exception::VirtualInstruction) => {
+                todo!();
+                let mut raw_inst = 0u32;
+                // Safety: _fetch_guest_instruction internally detects and handles an invalid guest virtual
+                // address in `pc' and will only write up to 4 bytes to `raw_inst`.
+                let ret = unsafe { _fetch_guest_instruction(self.regs.guest_regs.sepc, &mut raw_inst) };
+                if ret < 0 {
+                    panic!("ret: {}", ret);
+                }
+                info!("raw inst: {:#x}x, {:#b}b", raw_inst, raw_inst);
+                let decode_inst = riscv_decode::decode(raw_inst).unwrap();
+                info!("decod_inst: {:#x?}", decode_inst);
+                self.advance_pc(4);
+                match decode_inst {
+                    Instruction::Wfi => {
+                        Ok(AxVCpuExitReason::Wfi)
+                    }
+                    _ => {
+                        panic!("Unsupported instructions: {:#x?}", decode_inst);
+                    }
+                }
             }
             _ => {
                 panic!(

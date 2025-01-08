@@ -32,6 +32,13 @@ macro_rules! guest_csr_offset {
     };
 }
 
+#[allow(unused_macros)]
+macro_rules! guest_vscsr_offset {
+    ($reg:tt) => {
+        offset_of!(VmCpuRegisters, vs_csrs) + offset_of!(GuestVsCsrs, $reg)
+    };
+}
+
 core::arch::global_asm!(
     include_str!("trap.S"),
     hyp_ra = const hyp_gpr_offset(GprIndex::RA),
@@ -99,4 +106,19 @@ core::arch::global_asm!(
     guest_hstatus = const guest_csr_offset!(hstatus),
     guest_scounteren = const guest_csr_offset!(scounteren),
     guest_sepc = const guest_csr_offset!(sepc),
+
+    // vs csr
+    guest_htimedelta = const guest_vscsr_offset!(htimedelta),
+    guest_vsie = const guest_vscsr_offset!(vsie),
+    // guest_vsip = const guest_vscsr_offset!(vsie),
+    // todo hvip & vsipo/hip & vsie & hie ?
+    guest_vsstatus = const guest_vscsr_offset!(vsstatus),
+    guest_vstvec = const guest_vscsr_offset!(vstvec),
+    guest_vsscratch = const guest_vscsr_offset!(vsscratch),
+    guest_vsepc = const guest_vscsr_offset!(vsepc),
+    guest_vscause = const guest_vscsr_offset!(vscause),
+    guest_vstval = const guest_vscsr_offset!(vstval),
+    guest_vsatp = const guest_vscsr_offset!(vsatp),
+    //todo others?
+
 );

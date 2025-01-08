@@ -45,6 +45,27 @@ _run_guest:
     ld    t1, ({guest_sepc})(a0)
     csrw  sepc, t1
 
+    /* Vscsrs */
+//    ld    t1, ({guest_htimedelta})(a0)
+//    csrw  htimedelta, t1
+    ld    t1, ({guest_vsstatus})(a0)
+    csrw  vsstatus, t1
+    ld    t1, ({guest_vsie})(a0)
+    csrw  vsie, t1
+    ld    t1, ({guest_vstvec})(a0)
+    csrw  vstvec, t1
+    ld    t1, ({guest_vsscratch})(a0)
+    csrw  vsscratch, t1
+    ld    t1, ({guest_vsepc})(a0)
+    csrw  vsepc, t1
+    ld    t1, ({guest_vscause})(a0)
+    csrw  vscause, t1
+    ld    t1, ({guest_vstval})(a0)
+    csrw  vstval, t1
+    ld    t1, ({guest_vsatp})(a0)
+    csrw  vsatp, t1
+    /* Vscsrs */
+
     /* Set stvec so that hypervisor resumes after the sret when the guest exits. */
     la    t1, _guest_exit
     csrrw t1, stvec, t1
@@ -144,15 +165,33 @@ _restore_csrs:
     csrrw t1, scounteren, t1
     sd    t1, ({guest_scounteren})(a0)
 
-    ld    t1, ({hyp_stvec})(a0)
-    csrw  stvec, t1
-
     ld    t1, ({hyp_sscratch})(a0)
     csrw  sscratch, t1
 
     /* Save guest EPC. */
     csrr  t1, sepc
     sd    t1, ({guest_sepc})(a0)
+
+    /* Vscsrs */
+//    csrr  t1, htimedelta
+//    sd    t1, ({guest_htimedelta})(a0)
+    csrr  t1, vsstatus
+    sd    t1, ({guest_vsstatus})(a0)
+    csrr  t1, vsie
+    sd    t1, ({guest_vsie})(a0)
+    csrr  t1, vstvec
+    sd    t1, ({guest_vstvec})(a0)
+    csrr  t1, vsscratch
+    sd    t1, ({guest_vsscratch})(a0)
+   csrr  t1, vsepc
+    sd    t1, ({guest_vsepc})(a0)
+    csrr  t1, vscause
+    sd    t1, ({guest_vscause})(a0)
+    csrr  t1, vstval
+    sd    t1, ({guest_vstval})(a0)
+    csrr  t1, vsatp
+    sd    t1, ({guest_vsatp})(a0)
+    /* Vscsrs */
 
 
     /* Restore hypervisor GPRs. */

@@ -22,5 +22,6 @@ axerrno = "0.1.0"
 page_table_entry = "0.4.1"
 memory_addr = "0.3.1"
 
-axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
+axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git", branch = "inject_interrupt" }
+# axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
+axvcpu = { path = "../axvcpu" }
