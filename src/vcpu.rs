@@ -320,6 +320,10 @@ impl axvcpu::AxArchVCpu for RISCVVCpu {
             }
         }
     }
+
+    fn inject_interrupt(&mut self, _vector: usize) -> AxResult {
+        todo!()
+    }
 }
 
 impl RISCVVCpu {

@@ -5,7 +5,7 @@
 //! Then, it filters out illegal instruction from exceptions.
 //! ref: <https://github.com/luojia65/zihai/blob/main/zihai/src/detect.rs>
 
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use riscv::register::{
     scause::{Exception, Scause, Trap},
     sstatus,
@@ -147,7 +147,7 @@ struct TrapFrame {
 // handle exceptions only rather than interrupts.
 #[naked]
 unsafe extern "C" fn on_detect_trap() -> ! {
-    asm!(
+    naked_asm!(
         ".p2align 2",
         "addi   sp, sp, -8*21",
         "sd     ra, 0*8(sp)",
@@ -205,6 +205,5 @@ unsafe extern "C" fn on_detect_trap() -> ! {
         "addi   sp, sp, 8*21",
         "sret",
         rust_detect_trap = sym rust_detect_trap,
-        options(noreturn),
     )
 }
