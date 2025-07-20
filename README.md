@@ -1,7 +1,8 @@
 # riscv_vcpu
 riscv_vcpu_te: Lightweight Virtual CPU Framework for RISC-V Virtualization
 [![CI](https://github.com/arceos-hypervisor/riscv_vcpu/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/arceos-hypervisor/riscv_vcpu/actions/workflows/ci.yml)
-
+https://github.com/bullhh/riscv_vcpu_te/actions/workflows/ci.yml/badge.svg
+https://img.shields.io/crates/v/riscv_vcpu_te
 
 Overview
 
