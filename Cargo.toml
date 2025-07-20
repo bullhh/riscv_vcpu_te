@@ -1,7 +1,17 @@
 [package]
-name = "riscv_vcpu"
-version = "0.1.0"
+authors = [
+  "KeYang Hu <keyang.hu@qq.com>",
+  "Mingxian Su <aarkegz@gmail.com>",
+]
+categories = ["embedded", "no-std"]
+description = "ArceOS-Hypervisor riscv vcpu module"
 edition = "2024"
+keywords = ["hypervisor", "vcpu", "riscv"]
+license = "Apache-2.0 OR MIT"
+name = "riscv_vcpu_te"
+repository = "https://github.com/bullhh/riscv_vcpu_te"
+version = "0.1.0"
+
 
 [dependencies]
 log = "0.4.19"
