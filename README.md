@@ -1,49 +1,60 @@
 # **riscv_vcpu**
 
-riscv_vcpu_te: Lightweight Virtual CPU Framework for RISC-V Virtualization
+riscv64 virtual CPU (vCPU) implementation for hypervisors. This crate provides the core vCPU structure and virtualization-related interface support specifically designed for the riscv64 architecture.
 
 [![CI](https://github.com/arceos-hypervisor/riscv_vcpu/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/arceos-hypervisor/riscv_vcpu/actions/workflows/ci.yml)
-
-https://github.com/bullhh/riscv_vcpu_te/actions/workflows/ci.yml/badge.svg
-
-https://img.shields.io/crates/v/riscv_vcpu_te
+[![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)]
 
 ## Overview
 
-riscv_vcpu_te implements a minimal RISC-V Virtual CPU (VCPU) abstraction layer compliant with the RISC-V Hypervisor Extension (RVH). Designed for embedded hypervisors and educational use, it operates in no_std environments with support for FPGA acceleration.
-
-
+riscv_vcpu implements a minimal RISC-V Virtual CPU (VCPU) abstraction layer compliant with the RISC-V Hypervisor Extension (RVH). Designed for embedded hypervisors and educational use, it can operates in no_std environments.
 
 ## Features
 
-### • RVH Extension Support  
+- **Complete vCPU Implementation**: Full virtual CPU structure for riscv64 guests
+- **Exception Handling**: Comprehensive trap and exception handling for virtualized environments
+- **EPT (Extended Page Tables)**: Memory virtualization support
+- **VMCS Management**: Virtual Machine Control Structure operations
+- **Per-CPU Support**: Efficient per-CPU data structures and management
+- **No-std Compatible**: Works in bare-metal and embedded environments
 
- Virtual registers (hstatus, htimedelta, vsstatus), interrupt virtualization, and context switching.  
+## Usage
 
-### • Bare-Metal & Simulator Friendly  
+Add this to your `Cargo.toml`:
 
- Runs on TinyRISCV hardware or QEMU without OS dependency.  
-
-
+```toml
+[dependencies]
+riscv_vcpu = "0.1"
+```
 
 ## Basic Usage
 
+```rust
+use riscv_vcpu::{RISCVVCpu, RISCVVCpuCreateConfig, has_hardware_support};
+
+// Check if hardware virtualization is supported
+if has_hardware_support() {
+    // Create vCPU configuration
+    let config = RISCVVCpuCreateConfig::default();
+    
+    // Create and configure the virtual CPU
+    let vcpu = RISCVVCpu::new(config)?;
+    
+    // Run the virtual CPU
+    vcpu.run()?;
+}
 ```
-use riscv_vcpu_te::vcpu::VCPU;
 
-let mut vcpu = VCPU::new();
+## Related Projects 
 
-vcpu.load_firmware(0x8000_0000); // Guest entry point
-
-vcpu.execute(); // Start VM execution
-```
-
- 
++ [ArceOS](https://github.com/arceos-org/arceos) - An experimental modular OS (or Unikernel)
++ [AxVisor](https://github.com/arceos-hypervisor/axvisor) - Hypervisor implementation
 
 ## License
 
-• Core Code: Apache-2.0  
+This project is dual-licensed under either:
 
-• Examples/Tools: MIT  
+- MIT License ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
 
-Full text in https://github.com/bullhh/riscv_vcpu_te/blob/main/LICENSE.  
+at your option.
