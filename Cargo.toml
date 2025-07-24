@@ -9,7 +9,7 @@ authors = [
     "周睿 <zrufo747@outlook.com>"
 ]
 description = "ArceOS-Hypervisor riscv vcpu module"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPubL-2.0 OR MulanPSL2"
 repository = "https://github.com/arceos-hypervisor/riscv_vcpu"
 categories = ["embedded", "no-std"]
 keywords = ["hypervisor", "riscv", "vcpu"]
